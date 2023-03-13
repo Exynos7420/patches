@@ -17,15 +17,14 @@ git reset --hard HEAD~1
 cd ../../../
 cd system/bpf
 git reset --hard HEAD~1
-cd ..
-cd security
-#git am --signoff < ~/patches/system_security/0001-keystore-hackup.patch
-echo 'skipping system/security patch revert'
 cd ../../
 cd frameworks/native
 git reset --hard HEAD~1
 cd ../../
 cd system/core
+git reset --hard HEAD~1
+cd ../../
+cd build/soong
 git reset --hard HEAD~1
 cd ../../
 

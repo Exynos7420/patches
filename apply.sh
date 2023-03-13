@@ -17,14 +17,14 @@ git am --signoff < ~/patches/packages_modules_adb/0001-adb-Bring-back-support-fo
 cd ../../../
 cd system/bpf
 git am --signoff < ~/patches/system_bpf/0001-Support-no-BPF-usecase.patch
-cd ..
-cd security
-git am --signoff < ~/patches/system_security/0001-keystore-hackup.patch
 cd ../../
 cd frameworks/native
 git am --signoff < ~/patches/frameworks_native/0001-Disable-gpu-service.patch
 cd ../../
 cd system/core
 git am --signoff < ~/patches/system_core/0001-Add-no-BPF-usecase-support.patch
+cd ../../
+cd build/soong/
+git am --signoff < ~/patches/build_soong/0000-Allow-warnins-from-hardware.patch
 cd ../../
 
