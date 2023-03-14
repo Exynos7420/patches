@@ -1,0 +1,189 @@
+From 77a7fad54cd43ec104bedc7c64086d79402741fa Mon Sep 17 00:00:00 2001
+From: enesuzun2002 <emurat.uzun@gmail.com>
+Date: Tue, 14 Mar 2023 12:56:44 +0300
+Subject: [PATCH] Revert "Plumb attribution tag to Sensor Service"
+
+This reverts commit 340882c64b5944a62b122bbb24f95645c5a0c465.
+
+Change-Id: I9b205f04a009903eed56d0c67b1b917217a827b1
+---
+ libs/sensor/ISensorServer.cpp                    | 6 ++----
+ libs/sensor/SensorManager.cpp                    | 7 +++----
+ libs/sensor/include/sensor/ISensorServer.h       | 2 +-
+ libs/sensor/include/sensor/SensorManager.h       | 3 +--
+ services/sensorservice/SensorEventConnection.cpp | 9 ++++-----
+ services/sensorservice/SensorEventConnection.h   | 4 +---
+ services/sensorservice/SensorService.cpp         | 4 ++--
+ services/sensorservice/SensorService.h           | 2 +-
+ 8 files changed, 15 insertions(+), 22 deletions(-)
+
+diff --git a/libs/sensor/ISensorServer.cpp b/libs/sensor/ISensorServer.cpp
+index a6cacad374..a6b0aaf0b5 100644
+--- a/libs/sensor/ISensorServer.cpp
++++ b/libs/sensor/ISensorServer.cpp
+@@ -91,14 +91,13 @@ public:
+     }
+ 
+     virtual sp<ISensorEventConnection> createSensorEventConnection(const String8& packageName,
+-             int mode, const String16& opPackageName, const String16& attributionTag)
++             int mode, const String16& opPackageName)
+     {
+         Parcel data, reply;
+         data.writeInterfaceToken(ISensorServer::getInterfaceDescriptor());
+         data.writeString8(packageName);
+         data.writeInt32(mode);
+         data.writeString16(opPackageName);
+-        data.writeString16(attributionTag);
+         remote()->transact(CREATE_SENSOR_EVENT_CONNECTION, data, &reply);
+         return interface_cast<ISensorEventConnection>(reply.readStrongBinder());
+     }
+@@ -171,9 +170,8 @@ status_t BnSensorServer::onTransact(
+             String8 packageName = data.readString8();
+             int32_t mode = data.readInt32();
+             const String16& opPackageName = data.readString16();
+-            const String16& attributionTag = data.readString16();
+             sp<ISensorEventConnection> connection(createSensorEventConnection(packageName, mode,
+-                    opPackageName, attributionTag));
++                    opPackageName));
+             reply->writeStrongBinder(IInterface::asBinder(connection));
+             return NO_ERROR;
+         }
+diff --git a/libs/sensor/SensorManager.cpp b/libs/sensor/SensorManager.cpp
+index 0ba9704263..2c73536b2d 100644
+--- a/libs/sensor/SensorManager.cpp
++++ b/libs/sensor/SensorManager.cpp
+@@ -258,14 +258,13 @@ Sensor const* SensorManager::getDefaultSensor(int type)
+     return nullptr;
+ }
+ 
+-sp<SensorEventQueue> SensorManager::createEventQueue(
+-    String8 packageName, int mode, String16 attributionTag) {
++sp<SensorEventQueue> SensorManager::createEventQueue(String8 packageName, int mode) {
+     sp<SensorEventQueue> queue;
+ 
+     Mutex::Autolock _l(mLock);
+     while (assertStateLocked() == NO_ERROR) {
+-        sp<ISensorEventConnection> connection = mSensorServer->createSensorEventConnection(
+-            packageName, mode, mOpPackageName, attributionTag);
++        sp<ISensorEventConnection> connection =
++                mSensorServer->createSensorEventConnection(packageName, mode, mOpPackageName);
+         if (connection == nullptr) {
+             // SensorService just died or the app doesn't have required permissions.
+             ALOGE("createEventQueue: connection is NULL.");
+diff --git a/libs/sensor/include/sensor/ISensorServer.h b/libs/sensor/include/sensor/ISensorServer.h
+index ce5c672da0..402678f0fd 100644
+--- a/libs/sensor/include/sensor/ISensorServer.h
++++ b/libs/sensor/include/sensor/ISensorServer.h
+@@ -45,7 +45,7 @@ public:
+     virtual Vector<Sensor> getDynamicSensorList(const String16& opPackageName) = 0;
+ 
+     virtual sp<ISensorEventConnection> createSensorEventConnection(const String8& packageName,
+-             int mode, const String16& opPackageName, const String16& attributionTag) = 0;
++             int mode, const String16& opPackageName) = 0;
+     virtual int32_t isDataInjectionEnabled() = 0;
+ 
+     virtual sp<ISensorEventConnection> createSensorDirectConnection(const String16& opPackageName,
+diff --git a/libs/sensor/include/sensor/SensorManager.h b/libs/sensor/include/sensor/SensorManager.h
+index 8d0a8a45d9..76f74b3b77 100644
+--- a/libs/sensor/include/sensor/SensorManager.h
++++ b/libs/sensor/include/sensor/SensorManager.h
+@@ -60,8 +60,7 @@ public:
+     ssize_t getDynamicSensorList(Vector<Sensor>& list);
+     ssize_t getDynamicSensorList(Sensor const* const** list);
+     Sensor const* getDefaultSensor(int type);
+-    sp<SensorEventQueue> createEventQueue(
+-        String8 packageName = String8(""), int mode = 0, String16 attributionTag = String16(""));
++    sp<SensorEventQueue> createEventQueue(String8 packageName = String8(""), int mode = 0);
+     bool isDataInjectionEnabled();
+     int createDirectChannel(size_t size, int channelType, const native_handle_t *channelData);
+     void destroyDirectChannel(int channelNativeHandle);
+diff --git a/services/sensorservice/SensorEventConnection.cpp b/services/sensorservice/SensorEventConnection.cpp
+index f06f9472bd..4f7a251d70 100644
+--- a/services/sensorservice/SensorEventConnection.cpp
++++ b/services/sensorservice/SensorEventConnection.cpp
+@@ -38,12 +38,12 @@ constexpr int kTargetSdkUnknown = 0;
+ 
+ SensorService::SensorEventConnection::SensorEventConnection(
+         const sp<SensorService>& service, uid_t uid, String8 packageName, bool isDataInjectionMode,
+-        const String16& opPackageName, const String16& attributionTag)
++        const String16& opPackageName)
+     : mService(service), mUid(uid), mWakeLockRefCount(0), mHasLooperCallbacks(false),
+       mDead(false), mDataInjectionMode(isDataInjectionMode), mEventCache(nullptr),
+       mCacheSize(0), mMaxCacheSize(0), mTimeOfLastEventDrop(0), mEventsDropped(0),
+-      mPackageName(packageName), mOpPackageName(opPackageName), mAttributionTag(attributionTag),
+-      mTargetSdk(kTargetSdkUnknown), mDestroyed(false) {
++      mPackageName(packageName), mOpPackageName(opPackageName), mTargetSdk(kTargetSdkUnknown),
++      mDestroyed(false) {
+     mUserId = multiuser_get_user_id(mUid);
+     mChannel = new BitTube(mService->mSocketBufferSize);
+ #if DEBUG_CONNECTIONS
+@@ -467,8 +467,7 @@ bool SensorService::SensorEventConnection::noteOpIfRequired(const sensors_event_
+             noteMsg.append(String16(mService->getSensorStringType(sensorHandle)));
+             noteMsg.append(String16(")"));
+             int32_t appOpMode = mService->sAppOpsManager.noteOp(iter->second, mUid,
+-                                                                mOpPackageName, mAttributionTag,
+-                                                                noteMsg);
++                                                                mOpPackageName, {}, noteMsg);
+             success = (appOpMode == AppOpsManager::MODE_ALLOWED);
+         }
+     }
+diff --git a/services/sensorservice/SensorEventConnection.h b/services/sensorservice/SensorEventConnection.h
+index 6a98a40686..7d83e773e3 100644
+--- a/services/sensorservice/SensorEventConnection.h
++++ b/services/sensorservice/SensorEventConnection.h
+@@ -51,8 +51,7 @@ class SensorService::SensorEventConnection:
+ 
+ public:
+     SensorEventConnection(const sp<SensorService>& service, uid_t uid, String8 packageName,
+-                          bool isDataInjectionMode, const String16& opPackageName,
+-                          const String16& attributionTag);
++                          bool isDataInjectionMode, const String16& opPackageName);
+ 
+     status_t sendEvents(sensors_event_t const* buffer, size_t count, sensors_event_t* scratch,
+                         wp<const SensorEventConnection> const * mapFlushEventsToConnections = nullptr);
+@@ -185,7 +184,6 @@ private:
+     int mEventsDropped;
+     String8 mPackageName;
+     const String16 mOpPackageName;
+-    const String16 mAttributionTag;
+     int mTargetSdk;
+ #if DEBUG_CONNECTIONS
+     int mEventsReceived, mEventsSent, mEventsSentFromCache;
+diff --git a/services/sensorservice/SensorService.cpp b/services/sensorservice/SensorService.cpp
+index e0a4f034cb..4d40e97c70 100644
+--- a/services/sensorservice/SensorService.cpp
++++ b/services/sensorservice/SensorService.cpp
+@@ -1363,7 +1363,7 @@ Vector<Sensor> SensorService::getDynamicSensorList(const String16& opPackageName
+ }
+ 
+ sp<ISensorEventConnection> SensorService::createSensorEventConnection(const String8& packageName,
+-        int requestedMode, const String16& opPackageName, const String16& attributionTag) {
++        int requestedMode, const String16& opPackageName) {
+     // Only 2 modes supported for a SensorEventConnection ... NORMAL and DATA_INJECTION.
+     if (requestedMode != NORMAL && requestedMode != DATA_INJECTION) {
+         return nullptr;
+@@ -1386,7 +1386,7 @@ sp<ISensorEventConnection> SensorService::createSensorEventConnection(const Stri
+     String16 connOpPackageName =
+             (opPackageName == String16("")) ? String16(connPackageName) : opPackageName;
+     sp<SensorEventConnection> result(new SensorEventConnection(this, uid, connPackageName,
+-            requestedMode == DATA_INJECTION, connOpPackageName, attributionTag));
++            requestedMode == DATA_INJECTION, connOpPackageName));
+     if (requestedMode == DATA_INJECTION) {
+         mConnectionHolder.addEventConnectionIfNotPresent(result);
+         // Add the associated file descriptor to the Looper for polling whenever there is data to
+diff --git a/services/sensorservice/SensorService.h b/services/sensorservice/SensorService.h
+index 4ba3c51985..259f8321d1 100644
+--- a/services/sensorservice/SensorService.h
++++ b/services/sensorservice/SensorService.h
+@@ -348,7 +348,7 @@ private:
+     virtual Vector<Sensor> getDynamicSensorList(const String16& opPackageName);
+     virtual sp<ISensorEventConnection> createSensorEventConnection(
+             const String8& packageName,
+-            int requestedMode, const String16& opPackageName, const String16& attributionTag);
++            int requestedMode, const String16& opPackageName);
+     virtual int isDataInjectionEnabled();
+     virtual sp<ISensorEventConnection> createSensorDirectConnection(const String16& opPackageName,
+             uint32_t size, int32_t type, int32_t format, const native_handle *resource);
+-- 
+2.34.1
+

@@ -19,6 +19,9 @@ cd system/bpf
 git reset --hard HEAD~1
 cd ../../
 cd frameworks/native
+git reset --hard HEAD~2
+cd ../
+cd base
 git reset --hard HEAD~1
 cd ../../
 cd system/core
